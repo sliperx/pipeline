@@ -1,0 +1,259 @@
+pipeline {
+    agent {
+        kubernetes {
+            defaultContainer 'docker'
+            yaml """
+apiVersion: v1
+kind: Pod
+spec:
+  serviceAccountName: jenkins
+  containers:
+    - name: docker
+      image: twnsnd2team/docker:v2
+      resources:
+        limits:
+          memory: "256Mi"
+          cpu: "200m"
+      command:
+        - sleep
+        - "1d"
+      volumeMounts:
+        - name: dockersock
+          mountPath: /var/run/docker.sock
+          readOnly: false
+  volumes:
+    - name: dockersock
+      hostPath:
+        path: /var/run/docker.sock
+    - name: kubeconfig
+      secret:
+        secretName: jenkins-agent
+                """
+        }
+    }
+   environment {
+    SUCCESS_MESSAGE = "Job: ${env.JOB_NAME} with number ${env.BUILD_NUMBER} was successful \n ${env.BUILD_URL}"
+    FAILURE_MESSAGE = "Job: ${env.JOB_NAME} with number ${env.BUILD_NUMBER} was failed \n ${env.BUILD_URL}"
+ 
+    SLACK_RECIPIENTS = 'developers-notifications'
+    REPOSITORY = 'localhost:80'
+ 
+    APP_ENV = 'develop'
+    IMAGE_BASE = 'freenance/info'
+    IMAGE_TAG = "v$BUILD_NUMBER"
+    IMAGE_NAME = "${env.IMAGE_BASE}"
+    IMAGE_NAME_LATEST = "${env.IMAGE_BASE}:latest"
+    HOST = "https://info.freenance.online"
+    DOCKERFILE_NAME = "Dockerfile"
+    DOCKER_REGISTRY = 'freenance'
+    KUBECONFIG = credentials('kubernetes-jenkins')
+    NAMESPACE = 'info'
+    K8S_DEPLOYMENT_NAME = 'finance-info'
+    }
+    options {
+        timeout(time: 10, unit: 'MINUTES')
+        disableConcurrentBuilds()
+    }
+    stages {
+        stage('Delete workspace before build starts') {
+            steps {
+                echo 'Deleting workspace'
+                deleteDir()
+            }
+        }
+        stage ('Create index.html') {
+            steps {
+                script {
+                    sh 'mkdir -p html'
+                    writeFile file: 'html/index.html', text: '''
+                    <!DOCTYPE html>
+                    <html lang="ru">
+                    <head>
+                        <meta charset="UTF-8">
+                        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                        <title>Freenance Information Page</title>
+                        <style>
+
+                            body {
+                                font-family: 'Helvetica Neue', Arial, sans-serif;
+                                margin: 20px;
+                                background-color: #f8f9fa;
+                                color: #333;
+                                text-align: center;
+                            }
+
+
+                            .logo img {
+                                width: 200px;
+                                height: 64px;
+                                margin-bottom: 20px;
+                            }
+
+
+                            .table-container {
+                                display: flex;
+                                justify-content: center;
+                                margin-top: 20px;
+                            }
+
+
+                            table {
+                                width: 1200px;
+                                border-collapse: collapse;
+                                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+                                border-radius: 8px;
+                                overflow: hidden;
+                                background-color: #fff;
+                            }
+
+
+                            th {
+                                background-color: #f2f2f2;
+                                color: #333;
+                                padding: 15px;
+                                font-weight: bold;
+                                text-transform: uppercase;
+                                font-size: 14px;
+                                letter-spacing: 1px;
+                            }
+
+
+                            td {
+                                padding: 20px;
+                                border-bottom: 1px solid #ddd;
+                                font-size: 16px;
+                                color: #333;
+                            }
+
+
+                            td a {
+                                color: #333;
+                                text-decoration: underline;
+                                font-weight: bold;
+                                text-transform: uppercase;
+                                font-size: 14px;
+                                letter-spacing: 1px;
+                                transition: color 0.3s;
+                            }
+
+
+                            td a:visited {
+                                color: inherit;
+                                text-decoration: underline;
+                            }
+
+                            td a:hover {
+                                color: #007bff;
+                            }
+
+
+                            .img-cell {
+                                padding: 0;
+                                width: 300px;
+                                height: 200px;
+                            }
+
+                            .img-cell a {
+                                display: inline-block;
+                                width: 100%;
+                                height: 100%;
+                            }
+
+                            .img-cell img {
+                                width: 100%;
+                                height: auto;
+                                border-radius: 8px;
+                                transition: transform 0.3s, box-shadow 0.3s;
+                            }
+
+
+                            .img-cell img:hover {
+                                transform: scale(1.05);
+                                box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+                            }
+
+
+                            tr:last-child td {
+                                border-bottom: none;
+                            }
+                        </style>
+                    </head>
+                    <body>
+
+                    <div class="logo">
+                        <img src="logo.jpg" alt="Freenance Logo">
+                    </div>
+                    <div class="table-container">
+                        <table>
+                            <tr>
+                                <th>Service/Env</th>
+                                <th><a href="https://dev.freenance.store" target="_blank">environment-DEV</a></th>
+                                <th><a href="https://qa.freenance.store" target="_blank">environment-QA</a></th>
+                                <th><a href="https://freenance.store" target="_blank">environment-PROD</a></th>
+                            </tr>
+                            <tr>
+                                <td>BackEnd</td>
+                                <td><a href="http://swagger-dev.freenance.store/api/v1/schema/swagger-ui/" target="_blank" rel="noopener">Swagger</a></td>
+                                <td><a href="http://swagger-qa.freenance.store/api/v1/schema/swagger-ui/" target="_blank" rel="noopener">Swagger</a></td>
+                                <td>-</td>
+                            </tr>
+                            <tr>
+                                <td>Frontend</td>
+                                <td>443</td>
+                                <td>443</td>
+                                <td>443</td>
+                            </tr>
+                            <tr>
+                                <td>Database</td>
+                                <td>30050 / <a href="https://pgadmin.freenance.store" target="_blank">PgAdmin</a><br>pass: Agvydycr410</td>
+                                <td><a href="https://pgadmin.freenance.store" target="_blank">PgAdmin</a><br>pass: Agvydycr410</td>
+                                <td>-</td>
+                            </tr>
+                            <tr>
+                                <td>Tools</td>
+                                <td class="img-cell"><a href="https://jenkins.freenance.store" target="_blank"><img src="jenkins.jpg" alt="Jenkins"></a></td>
+                                <td class="img-cell"><a href="https://elastic.freenance.store" target="_blank"><img src="elastic.jpg" alt="Elastic"></a></td>
+                                <td class="img-cell"><a href="https://pgadmin.freenance.store" target="_blank"><img src="pgadmin.jpg" alt="PgAdmin"></a></td>
+                            </tr>
+                            <tr>
+                                <td>Additional Tools</td>
+                                <td class="img-cell"><a href="https://jira.freenance.store" target="_blank"><img src="jira.jpg" alt="Jira"></a></td>
+                                <td class="img-cell"><a href="https://www.figma.com/design/zkgIhknVccadKRVsfrVbXE/Freefinance-(Copy)?node-id=2-2&t=FyRP7AcIMSKmMQEt-1" target="_blank"><img src="Figma.jpg" alt="Figma"></a></td>
+                                <td class="img-cell"><a href="https://drive.google.com/drive/folders/1qfkI6_CMnSD7TADH4L0X-Dx3rLoqxWqr?usp=drive_link" target="_blank"><img src="google.jpg" alt="Google"></a></td>
+                            </tr>
+                        </table>
+                    </div>
+
+                    </body>
+                    </html>
+                    '''
+                }
+            }
+        }
+        stage ('create dockerfile & build image') {
+            steps {
+                script {
+                    writeFile file: "${env.DOCKERFILE_NAME}", text: '''
+                    FROM nginx:1.27
+                    COPY html /usr/share/nginx/html
+                    '''
+                    def dockerImage = docker.build("${env.IMAGE_NAME}","-f ${env.DOCKERFILE_NAME} .")
+                    docker.withRegistry('', 'docker-hub-freenance') {
+                    dockerImage.push()
+                    }     
+                echo "Pushed Docker Image: ${env.IMAGE_NAME}:${commitId}"
+                }
+                  sh "docker rmi ${env.IMAGE_NAME}"
+                }
+            }
+        }
+         stage('Deploy to Kubernetes') {
+            steps {
+                withKubeConfig([credentialsId: 'kubernetes-jenkins']) {
+                    sh "sed -i 's/{{NAMESPACE}}/${NAMESPACE}/g' finance-app/k8s/frontendDeploymentProd.yaml"
+                    sh "sed -i 's/{{IMAGE_TAG}}/${commitId}/g' finance-app/k8s/frontendDeploymentProd.yaml"
+                    sh 'kubectl apply -f finance-app/k8s/frontendDeploymentProd.yaml'
+                }
+            }
+        }
+    }
