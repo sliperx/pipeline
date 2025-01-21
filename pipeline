@@ -32,12 +32,6 @@ spec:
         }
     }
    environment {
-    SUCCESS_MESSAGE = "Job: ${env.JOB_NAME} with number ${env.BUILD_NUMBER} was successful \n ${env.BUILD_URL}"
-    FAILURE_MESSAGE = "Job: ${env.JOB_NAME} with number ${env.BUILD_NUMBER} was failed \n ${env.BUILD_URL}"
- 
-    SLACK_RECIPIENTS = 'developers-notifications'
-    REPOSITORY = 'localhost:80'
- 
     APP_ENV = 'develop'
     IMAGE_BASE = 'freenance/info'
     IMAGE_TAG = "v$BUILD_NUMBER"
@@ -45,10 +39,6 @@ spec:
     IMAGE_NAME_LATEST = "${env.IMAGE_BASE}:latest"
     HOST = "https://info.freenance.online"
     DOCKERFILE_NAME = "Dockerfile"
-    DOCKER_REGISTRY = 'freenance'
-    KUBECONFIG = credentials('kubernetes-jenkins')
-    NAMESPACE = 'info'
-    K8S_DEPLOYMENT_NAME = 'finance-info'
     }
     options {
         timeout(time: 10, unit: 'MINUTES')
@@ -61,11 +51,10 @@ spec:
                 deleteDir()
             }
         }
-        stage ('Create index.html') {
+        stage ('Create index.html & nginx configs') {
             steps {
                 script {
-                    sh 'mkdir -p html'
-                    writeFile file: 'html/index.html', text: '''
+                    def envContent= '''
                     <!DOCTYPE html>
                     <html lang="ru">
                     <head>
@@ -193,8 +182,8 @@ spec:
                             </tr>
                             <tr>
                                 <td>BackEnd</td>
-                                <td><a href="http://swagger-dev.freenance.store/api/v1/schema/swagger-ui/" target="_blank" rel="noopener">Swagger</a></td>
-                                <td><a href="http://swagger-qa.freenance.store/api/v1/schema/swagger-ui/" target="_blank" rel="noopener">Swagger</a></td>
+                                <td><a href="http://dev.freenance.store/api/v1/schema/swagger-ui/" target="_blank" rel="noopener">Swagger</a></td>
+                                <td><a href="http://qa.freenance.store/api/v1/schema/swagger-ui/" target="_blank" rel="noopener">Swagger</a></td>
                                 <td>-</td>
                             </tr>
                             <tr>
@@ -227,6 +216,56 @@ spec:
                     </body>
                     </html>
                     '''
+                    writeFile file: 'index.html', text: "${envContent}"
+                    sh "cat index.html"
+                    def envNginx.conf= '''
+                    user  nginx;
+                    worker_processes  auto;
+
+                    error_log  /var/log/nginx/error.log notice;
+                    pid        /var/run/nginx.pid;
+
+
+                    events {
+                    worker_connections  1024;
+                    }
+
+
+                    http {
+                    include       /etc/nginx/mime.types;
+                    default_type  application/octet-stream;
+
+                    log_format  main  '$remote_addr - $remote_user [$time_local] "$request" '
+                                    '$status $body_bytes_sent "$http_referer" '
+                                    '"$http_user_agent" "$http_x_forwarded_for"';
+
+                    access_log  /var/log/nginx/access.log  main;
+
+                    sendfile        on;
+                    #tcp_nopush     on;
+
+                    keepalive_timeout  65;
+
+                    #gzip  on;
+
+                    include /etc/nginx/conf.d/*.conf;
+                    }
+                    '''
+                    writeFile file: 'nginx.conf', text: "${envNginx.conf}"
+                    sh 'cat envNginx.conf'
+                    def envDefault.conf= '''
+                    server {
+                    listen 80;
+
+                    location / {
+                        root /usr/share/nginx/html/;
+                        include /etc/nginx/mime.types;
+                        try_files $uri $uri/ /index.html;
+                            }
+                    }
+                    '''
+                    writeFile file: 'default.conf', text: "${envDefault.conf}"
+                    sh 'cat default.conf'
                 }
             }
         }
@@ -235,13 +274,17 @@ spec:
                 script {
                     writeFile file: "${env.DOCKERFILE_NAME}", text: '''
                     FROM nginx:1.27
-                    COPY html /usr/share/nginx/html
+                    COPY index.html /usr/share/nginx/html
+                    COPY nginx.conf /etc/nginx
+                    COPY default.conf /etc/nginx/conf.d
+                    EXPOSE 80
+                    CMD ["nginx", "-g", "daemon off;"]
                     '''
                     def dockerImage = docker.build("${env.IMAGE_NAME}","-f ${env.DOCKERFILE_NAME} .")
                     docker.withRegistry('', 'docker-hub-freenance') {
                     dockerImage.push()
                     }     
-                echo "Pushed Docker Image: ${env.IMAGE_NAME}:${commitId}"
+                echo "Pushed Docker Image: ${env.IMAGE_NAME}"
                 }
                   sh "docker rmi ${env.IMAGE_NAME}"
                 }
@@ -250,9 +293,7 @@ spec:
          stage('Deploy to Kubernetes') {
             steps {
                 withKubeConfig([credentialsId: 'kubernetes-jenkins']) {
-                    sh "sed -i 's/{{NAMESPACE}}/${NAMESPACE}/g' finance-app/k8s/frontendDeploymentProd.yaml"
-                    sh "sed -i 's/{{IMAGE_TAG}}/${commitId}/g' finance-app/k8s/frontendDeploymentProd.yaml"
-                    sh 'kubectl apply -f finance-app/k8s/frontendDeploymentProd.yaml'
+                    sh 'kubectl apply -f finance-app/k8s/infoPageDeploymentProd.yaml'
                 }
             }
         }
