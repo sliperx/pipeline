@@ -51,7 +51,7 @@ spec:
                 deleteDir()
             }
         }
-        stage ('Create index.html & nginx configs') {
+        stage ('Create files') {
             steps {
                 script {
                     def envContent= '''
@@ -235,9 +235,10 @@ spec:
                     include       /etc/nginx/mime.types;
                     default_type  application/octet-stream;
 
-                    log_format  main  '$remote_addr - $remote_user [$time_local] "$request" '
-                                    '$status $body_bytes_sent "$http_referer" '
-                                    '"$http_user_agent" "$http_x_forwarded_for"';
+                    log_format main '$remote_addr - $remote_user [$time_local] ' 
+                                     '"$request" $status $request_time $upstream_response_time $body_bytes_sent ' 
+                                     '"$http_referer" "$http_user_agent" ' 
+                                     '$upstream_addr ' '$upstream_status ' '$upstream_connect_time ' '$upstream_header_time';
 
                     access_log  /var/log/nginx/access.log  main;
 
@@ -266,34 +267,85 @@ spec:
                     '''
                     writeFile file: 'default.conf', text: "${envDefault.conf}"
                     sh 'cat default.conf'
+                    def envDeployManifest= '''
+                    apiVersion: v1
+                    kind: Service
+                    metadata:
+                    namespace: info
+                    name: info-freenance
+                    spec:
+                    selector:
+                        app: info-freenance
+                    ports:
+                        - protocol: TCP
+                        port: 80
+                        targetPort: 80
+                    type: ClusterIP
+                    ---
+                    apiVersion: apps/v1
+                    kind: Deployment
+                    metadata:
+                    namespace: info
+                    name: info-freenance
+                    spec:
+                    replicas: 1
+                    selector:
+                        matchLabels:
+                        app: info-freenance
+                    template:
+                        metadata:
+                        labels:
+                            app: info-freenance
+                        spec:
+                        containers:
+                        - name: info
+                            image: freenance/info:v1
+                            resources:
+                            requests:
+                                memory: "32Mi"
+                                cpu: "25m"
+                            limits:
+                                memory: "64Mi"
+                                cpu: "50m"
+                            ports:
+                            - containerPort: 80
+                    '''
+                    writeFile file: 'infoPageDeploymentProd.yaml', text: "${envDeployManifest}"
+                    sh 'cat infoPageDeploymentProd.yaml'
                 }
             }
         }
-        stage ('create dockerfile & build image') {
+        stage ('create dockerfile') {
             steps {
                 script {
                     writeFile file: "${env.DOCKERFILE_NAME}", text: '''
                     FROM nginx:1.27
-                    COPY index.html /usr/share/nginx/html
-                    COPY nginx.conf /etc/nginx
-                    COPY default.conf /etc/nginx/conf.d
+                    ADD index.html /usr/share/nginx/html
+                    ADD nginx.conf /etc/nginx
+                    ADD default.conf /etc/nginx/conf.d
                     EXPOSE 80
                     CMD ["nginx", "-g", "daemon off;"]
                     '''
+                   }
+                }
+            }
+        }
+        stage ('build image') {
+            steps {
+                script {
                     def dockerImage = docker.build("${env.IMAGE_NAME}","-f ${env.DOCKERFILE_NAME} .")
                     docker.withRegistry('', 'docker-hub-freenance') {
                     dockerImage.push()
-                    }     
+                    }
                 echo "Pushed Docker Image: ${env.IMAGE_NAME}"
                 }
-                  sh "docker rmi ${env.IMAGE_NAME}"
-                }
+                sh "docker rmi ${env.IMAGE_NAME}"
             }
         }
          stage('Deploy to Kubernetes') {
             steps {
                 withKubeConfig([credentialsId: 'kubernetes-jenkins']) {
-                    sh 'kubectl apply -f finance-app/k8s/infoPageDeploymentProd.yaml'
+                    sh 'kubectl apply -f infoPageDeploymentProd.yaml'
                 }
             }
         }
