@@ -38,7 +38,6 @@ spec:
     IMAGE_NAME = "${env.IMAGE_BASE}"
     IMAGE_NAME_LATEST = "${env.IMAGE_BASE}:latest"
     HOST = "https://info.freenance.online"
-    DOCKERFILE_NAME = "Dockerfile"
     }
     options {
         timeout(time: 10, unit: 'MINUTES')
