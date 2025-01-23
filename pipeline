@@ -38,6 +38,7 @@ spec:
     IMAGE_NAME = "${env.IMAGE_BASE}"
     IMAGE_NAME_LATEST = "${env.IMAGE_BASE}:latest"
     HOST = "https://info.freenance.online"
+    DOCKERFILE_NAME = "Dockerfile"
     }
     options {
         timeout(time: 10, unit: 'MINUTES')
@@ -50,174 +51,32 @@ spec:
                 deleteDir()
             }
         }
+        stage('Env print') {
+            steps {
+                sh '''
+                    echo Selected Type of checkout: $TYPE
+                    echo Selected Branch name: $BRANCH
+                    echo Selected Tag name: $TAG
+                    echo Selected Branch or Tag name: $BRANCH_and_TAG
+                    echo Selected Revision name: $REVISION
+                    echo Selected Pull request name: $PULL_REQUESTS
+                '''
+            }
+        }
+        stage('Checkout') {
+            steps {
+                git branch: 'main', credentialsId: 'git_freenance', url: 'git@github.com:PineappleIncTeam/infopage.git'
+                script {
+                    commitId = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
+                    currentBuild.description = "${commitId}"
+                    echo "${commitId}"
+                }
+            }
+        }
         stage ('Create files') {
             steps {
                 script {
-                    def envContent= '''
-                    <!DOCTYPE html>
-                    <html lang="ru">
-                    <head>
-                        <meta charset="UTF-8">
-                        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                        <title>Freenance Information Page</title>
-                        <style>
-
-                            body {
-                                font-family: 'Helvetica Neue', Arial, sans-serif;
-                                margin: 20px;
-                                background-color: #f8f9fa;
-                                color: #333;
-                                text-align: center;
-                            }
-
-
-                            .logo img {
-                                width: 200px;
-                                height: 64px;
-                                margin-bottom: 20px;
-                            }
-
-
-                            .table-container {
-                                display: flex;
-                                justify-content: center;
-                                margin-top: 20px;
-                            }
-
-
-                            table {
-                                width: 1200px;
-                                border-collapse: collapse;
-                                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-                                border-radius: 8px;
-                                overflow: hidden;
-                                background-color: #fff;
-                            }
-
-
-                            th {
-                                background-color: #f2f2f2;
-                                color: #333;
-                                padding: 15px;
-                                font-weight: bold;
-                                text-transform: uppercase;
-                                font-size: 14px;
-                                letter-spacing: 1px;
-                            }
-
-
-                            td {
-                                padding: 20px;
-                                border-bottom: 1px solid #ddd;
-                                font-size: 16px;
-                                color: #333;
-                            }
-
-
-                            td a {
-                                color: #333;
-                                text-decoration: underline;
-                                font-weight: bold;
-                                text-transform: uppercase;
-                                font-size: 14px;
-                                letter-spacing: 1px;
-                                transition: color 0.3s;
-                            }
-
-
-                            td a:visited {
-                                color: inherit;
-                                text-decoration: underline;
-                            }
-
-                            td a:hover {
-                                color: #007bff;
-                            }
-
-
-                            .img-cell {
-                                padding: 0;
-                                width: 300px;
-                                height: 200px;
-                            }
-
-                            .img-cell a {
-                                display: inline-block;
-                                width: 100%;
-                                height: 100%;
-                            }
-
-                            .img-cell img {
-                                width: 100%;
-                                height: auto;
-                                border-radius: 8px;
-                                transition: transform 0.3s, box-shadow 0.3s;
-                            }
-
-
-                            .img-cell img:hover {
-                                transform: scale(1.05);
-                                box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
-                            }
-
-
-                            tr:last-child td {
-                                border-bottom: none;
-                            }
-                        </style>
-                    </head>
-                    <body>
-
-                    <div class="logo">
-                        <img src="logo.jpg" alt="Freenance Logo">
-                    </div>
-                    <div class="table-container">
-                        <table>
-                            <tr>
-                                <th>Service/Env</th>
-                                <th><a href="https://dev.freenance.store" target="_blank">environment-DEV</a></th>
-                                <th><a href="https://qa.freenance.store" target="_blank">environment-QA</a></th>
-                                <th><a href="https://freenance.store" target="_blank">environment-PROD</a></th>
-                            </tr>
-                            <tr>
-                                <td>BackEnd</td>
-                                <td><a href="http://dev.freenance.store/api/v1/schema/swagger-ui/" target="_blank" rel="noopener">Swagger</a></td>
-                                <td><a href="http://qa.freenance.store/api/v1/schema/swagger-ui/" target="_blank" rel="noopener">Swagger</a></td>
-                                <td>-</td>
-                            </tr>
-                            <tr>
-                                <td>Frontend</td>
-                                <td>443</td>
-                                <td>443</td>
-                                <td>443</td>
-                            </tr>
-                            <tr>
-                                <td>Database</td>
-                                <td>30050 / <a href="https://pgadmin.freenance.store" target="_blank">PgAdmin</a><br>pass: Agvydycr410</td>
-                                <td><a href="https://pgadmin.freenance.store" target="_blank">PgAdmin</a><br>pass: Agvydycr410</td>
-                                <td>-</td>
-                            </tr>
-                            <tr>
-                                <td>Tools</td>
-                                <td class="img-cell"><a href="https://jenkins.freenance.store" target="_blank"><img src="jenkins.jpg" alt="Jenkins"></a></td>
-                                <td class="img-cell"><a href="https://elastic.freenance.store" target="_blank"><img src="elastic.jpg" alt="Elastic"></a></td>
-                                <td class="img-cell"><a href="https://pgadmin.freenance.store" target="_blank"><img src="pgadmin.jpg" alt="PgAdmin"></a></td>
-                            </tr>
-                            <tr>
-                                <td>Additional Tools</td>
-                                <td class="img-cell"><a href="https://jira.freenance.store" target="_blank"><img src="jira.jpg" alt="Jira"></a></td>
-                                <td class="img-cell"><a href="https://www.figma.com/design/zkgIhknVccadKRVsfrVbXE/Freefinance-(Copy)?node-id=2-2&t=FyRP7AcIMSKmMQEt-1" target="_blank"><img src="Figma.jpg" alt="Figma"></a></td>
-                                <td class="img-cell"><a href="https://drive.google.com/drive/folders/1qfkI6_CMnSD7TADH4L0X-Dx3rLoqxWqr?usp=drive_link" target="_blank"><img src="google.jpg" alt="Google"></a></td>
-                            </tr>
-                        </table>
-                    </div>
-
-                    </body>
-                    </html>
-                    '''
-                    writeFile file: 'index.html', text: "${envContent}"
-                    sh "cat index.html"
-                    def envNginx.conf= '''
+                    def envNginxConf= '''
                     user  nginx;
                     worker_processes  auto;
 
@@ -251,9 +110,9 @@ spec:
                     include /etc/nginx/conf.d/*.conf;
                     }
                     '''
-                    writeFile file: 'nginx.conf', text: "${envNginx.conf}"
-                    sh 'cat envNginx.conf'
-                    def envDefault.conf= '''
+                    writeFile file: 'nginx.conf', text: "${envNginxConf}"
+                    sh 'cat nginx.conf'
+                    def envDefaultConf= '''
                     server {
                     listen 80;
 
@@ -264,7 +123,7 @@ spec:
                             }
                     }
                     '''
-                    writeFile file: 'default.conf', text: "${envDefault.conf}"
+                    writeFile file: 'default.conf', text: "${envDefaultConf}"
                     sh 'cat default.conf'
                     def envDeployManifest= '''
                     apiVersion: v1
@@ -319,7 +178,7 @@ spec:
                 script {
                     writeFile file: "${env.DOCKERFILE_NAME}", text: '''
                     FROM nginx:1.27
-                    ADD index.html /usr/share/nginx/html
+                    COPY index.html elastic.jpg Figma.jpg google.jpg jenkins.jpg jira.jpg logo.jpg pgadmin.jpg /usr/share/nginx/html
                     ADD nginx.conf /etc/nginx
                     ADD default.conf /etc/nginx/conf.d
                     EXPOSE 80
@@ -332,13 +191,14 @@ spec:
         stage ('build image') {
             steps {
                 script {
-                    def dockerImage = docker.build("${env.IMAGE_NAME}","-f ${env.DOCKERFILE_NAME} .")
+                    def dockerImage = docker.build("${env.IMAGE_NAME}:${commitId})","-f ${env.DOCKERFILE_NAME} .")
                     docker.withRegistry('', 'docker-hub-freenance') {
                     dockerImage.push()
+                    dockerImage.push("${commitId}")
                     }
-                echo "Pushed Docker Image: ${env.IMAGE_NAME}"
+                echo "Pushed Docker Image: ${env.IMAGE_NAME}:${commitId}"
                 }
-                sh "docker rmi ${env.IMAGE_NAME}"
+                sh "docker rmi ${env.IMAGE_NAME}:${commitId}"
             }
         }
          stage('Deploy to Kubernetes') {
